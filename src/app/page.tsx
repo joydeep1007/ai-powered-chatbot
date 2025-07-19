@@ -4,13 +4,15 @@ import { useState, useRef, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Send, Bot, User, ChevronDown, Sun, Moon } from 'lucide-react';
+import { Send, Bot, User, ChevronDown, Sun, Moon, Paperclip, X, FileText } from 'lucide-react';
+import { PDFProcessingResult } from '@/lib/pdfProcessor';
 
 type Message = {
   id: string;
   sender: 'user' | 'bot';
   content: string;
   timestamp: Date;
+  pdfContext?: string;
 };
 
 export default function ChatbotPage() {
@@ -21,11 +23,21 @@ export default function ChatbotPage() {
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [uploadedPDF, setUploadedPDF] = useState<PDFProcessingResult | null>(null);
+  const [isProcessingPDF, setIsProcessingPDF] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setIsMounted(true);
+    // Focus input field when component first mounts
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+      }
+    }, 100);
   }, []);
 
   useEffect(() => {
@@ -38,6 +50,13 @@ export default function ChatbotPage() {
       }, 100);
     }
   }, [messages, isAtBottom]);
+
+  useEffect(() => {
+    // Focus input field when loading stops (AI response completed)
+    if (!isLoading && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [isLoading]);
 
   const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
     const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
@@ -58,6 +77,69 @@ export default function ChatbotPage() {
 
   const toggleDarkMode = () => {
     setIsDarkMode(!isDarkMode);
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== 'application/pdf') {
+      alert('Please upload a PDF file only.');
+      return;
+    }
+
+    // Check file size (limit to 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      alert('PDF file is too large. Please upload a file smaller than 10MB.');
+      return;
+    }
+
+    setIsProcessingPDF(true);
+    try {
+      // Dynamic import to avoid SSR issues with PDF.js
+      const { extractTextFromPDFClient } = await import('@/components/PDFProcessor.client');
+      const pdfResult = await extractTextFromPDFClient(file);
+      setUploadedPDF(pdfResult);
+      
+      // Add a system message to show PDF was uploaded
+      const pdfMessage: Message = {
+        id: Date.now().toString(),
+        sender: 'bot',
+        content: `📄 PDF uploaded successfully! "${pdfResult.fileName}" (${pdfResult.pageCount} pages)\n\nI can now answer questions about this document. What would you like to know?`,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, pdfMessage]);
+    } catch (error) {
+      console.error('PDF processing error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to process PDF. Please try again.';
+      alert(errorMessage);
+      
+      // Add error message to chat
+      const errorChatMessage: Message = {
+        id: Date.now().toString(),
+        sender: 'bot',
+        content: `❌ Failed to process PDF: ${errorMessage}`,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorChatMessage]);
+    } finally {
+      setIsProcessingPDF(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleRemovePDF = () => {
+    setUploadedPDF(null);
+    const removeMessage: Message = {
+      id: Date.now().toString(),
+      sender: 'bot',
+      content: '📄 PDF document removed. I no longer have access to the document content.',
+      timestamp: new Date(),
+    };
+    setMessages(prev => [...prev, removeMessage]);
   };
 
   const handleSend = async () => {
@@ -82,7 +164,12 @@ export default function ChatbotPage() {
         },
         body: JSON.stringify({ 
           message: userMessage.content,
-          conversationHistory: messages
+          conversationHistory: messages,
+          pdfContext: uploadedPDF ? {
+            text: uploadedPDF.text,
+            fileName: uploadedPDF.fileName,
+            pageCount: uploadedPDF.pageCount
+          } : null
         }),
       });
 
@@ -142,6 +229,35 @@ export default function ChatbotPage() {
             <span className="text-sm font-normal opacity-80 ml-auto mr-3">
               Powered by Gemini
             </span>
+            
+            {/* PDF Upload Section */}
+            {uploadedPDF && (
+              <div className="flex items-center gap-2 mr-3 bg-white/20 rounded-lg px-2 py-1">
+                <FileText className="w-4 h-4" />
+                <span className="text-xs max-w-20 truncate">{uploadedPDF.fileName}</span>
+                <Button
+                  onClick={handleRemovePDF}
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 text-white hover:bg-white/20"
+                >
+                  <X className="w-3 h-3" />
+                </Button>
+              </div>
+            )}
+            
+            {/* PDF Upload Button */}
+            <Button
+              onClick={() => fileInputRef.current?.click()}
+              variant="ghost"
+              size="sm"
+              className="text-white hover:bg-white/20 transition-colors duration-200"
+              disabled={isProcessingPDF}
+            >
+              <Paperclip className="w-4 h-4" />
+            </Button>
+            
+            {/* Dark Mode Toggle */}
             {isMounted && (
               <Button
                 onClick={toggleDarkMode}
@@ -152,6 +268,15 @@ export default function ChatbotPage() {
                 {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </Button>
             )}
+            
+            {/* Hidden File Input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
           </CardTitle>
         </CardHeader>
         
@@ -220,6 +345,30 @@ export default function ChatbotPage() {
                 </div>
               ))}
               
+              {isProcessingPDF && (
+                <div className="flex gap-3 justify-start">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 flex items-center justify-center">
+                    <FileText className="w-4 h-4 text-white" />
+                  </div>
+                  <div className={`rounded-2xl px-4 py-3 transition-colors duration-300 ${
+                    isMounted && isDarkMode 
+                      ? 'bg-gray-700 border border-gray-600' 
+                      : 'bg-gray-100 border border-gray-200'
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      <div className="flex gap-1">
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce"></div>
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce delay-100"></div>
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce delay-200"></div>
+                      </div>
+                      <span className={`text-sm ${isMounted && isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                        Processing PDF...
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {isLoading && (
                 <div className="flex gap-3 justify-start">
                   <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 flex items-center justify-center">
@@ -259,8 +408,31 @@ export default function ChatbotPage() {
               ? 'bg-gray-800 border-gray-600' 
               : 'bg-white border-gray-200'
           }`}>
+            {/* PDF Status Bar */}
+            {uploadedPDF && (
+              <div className={`flex items-center gap-2 mb-3 p-2 rounded-lg transition-colors duration-300 ${
+                isMounted && isDarkMode 
+                  ? 'bg-gray-700 border border-gray-600' 
+                  : 'bg-blue-50 border border-blue-200'
+              }`}>
+                <FileText className={`w-4 h-4 ${isMounted && isDarkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+                <span className={`text-sm ${isMounted && isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  📄 {uploadedPDF.fileName} ({uploadedPDF.pageCount} pages) - Ready to answer questions
+                </span>
+                <Button
+                  onClick={handleRemovePDF}
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 ml-auto"
+                >
+                  <X className="w-3 h-3" />
+                </Button>
+              </div>
+            )}
+            
             <div className="flex gap-2">
               <Input
+                ref={inputRef}
                 placeholder="Type your message..."
                 value={input}
                 onChange={(e) => setInput(e.target.value)}

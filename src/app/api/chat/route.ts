@@ -5,7 +5,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 export async function POST(request: NextRequest) {
   try {
-    const { message, conversationHistory } = await request.json();
+    const { message, conversationHistory, pdfContext } = await request.json();
 
     if (!message) {
       return NextResponse.json(
@@ -44,7 +44,15 @@ export async function POST(request: NextRequest) {
     }
     
     // Add system context to help the AI know its identity
-    const systemContext = 'You are Gubluxxy, an AI assistant powered by Gemini. ';
+    let systemContext = 'You are Gubluxxy, an AI assistant powered by Gemini. ';
+    
+    // Add PDF context if available
+    if (pdfContext) {
+      systemContext += `You have access to a PDF document "${pdfContext.fileName}" (${pdfContext.pageCount} pages). Use this document to answer questions when relevant. Here's the document content:\n\n${pdfContext.text}\n\n`;
+    }
+    
+    systemContext += 'Please provide helpful and accurate responses. If asked about the PDF content, reference it directly.';
+    
     const fullPrompt = systemContext + conversationContext + `User: ${message}\nAssistant:`;
     
     const result = await model.generateContent(fullPrompt);
