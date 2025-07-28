@@ -186,13 +186,34 @@ export default function ChatbotPage() {
         timestamp: new Date(),
       };
 
+      // Enhanced logging with model information
+      if (data.apiUsed === 'sonar') {
+        console.log(`💡 Response generated using ${data.modelUsed} via Perplexity Pro`);
+      } else {
+        console.log(`💡 Response generated using ${data.modelUsed}`);
+      }
+
       setMessages(prev => [...prev, botReply]);
     } catch (error) {
       console.error('Error:', error);
+      
+      let errorContent = 'Sorry, I encountered an error. Please try again.';
+      
+      // Handle specific error types
+      if (error instanceof Error) {
+        if (error.message.includes('Both Gemini and Sonar APIs are unavailable')) {
+          errorContent = '🚫 All AI services are currently unavailable. Please try again in a few minutes.';
+        } else if (error.message.includes('quota exceeded')) {
+          errorContent = '⏳ API usage limit reached. Trying backup services...';
+        } else if (error.message.includes('overloaded')) {
+          errorContent = '🔧 AI service is busy. Switching to backup service...';
+        }
+      }
+      
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         sender: 'bot',
-        content: 'Sorry, I encountered an error. Please try again.',
+        content: errorContent,
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, errorMessage]);
