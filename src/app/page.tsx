@@ -248,7 +248,7 @@ export default function ChatbotPage() {
             <Bot className="w-6 h-6" />
             Gubluxxy
             <span className="text-sm font-normal opacity-80 ml-auto mr-3">
-              Powered by Gemini
+              Powered by AI
             </span>
             
             {/* PDF Upload Section */}

@@ -3,104 +3,57 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
-// Enhanced Sonar API call with Pro model
-const callSonarAPI = async (prompt: string): Promise<string> => {
+// Simple Sonar Pro API fallback
+const callSonarAPI = async (prompt: string): Promise<{ text: string, model: string }> => {
+  console.log(`🤖 Trying Sonar Pro model...`);
+  
+  const requestBody = {
+    model: 'sonar-pro',
+    messages: [
+      {
+        role: 'system',
+        content: 'You are Gubluxxy, a helpful AI assistant. Provide accurate and helpful responses.'
+      },
+      {
+        role: 'user',
+        content: prompt
+      }
+    ],
+    max_tokens: 2000,
+    temperature: 0.7,
+    stream: false
+  };
+
+  console.log(`📡 Making request to Perplexity with model: sonar-pro`);
+
   const response = await fetch('https://api.perplexity.ai/chat/completions', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${process.env.SONAR_API_KEY}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      model: 'claude-3.5-sonnet-20241022', // 🚀 Using the most powerful Pro model
-      messages: [
-        {
-          role: 'system',
-          content: 'You are Gubluxxy, a helpful AI assistant. Provide accurate, detailed, and well-structured responses. When analyzing documents, be thorough and cite specific information.'
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
-      max_tokens: 4000,
-      temperature: 0.7,
-      top_p: 0.9,
-      stream: false
-    }),
+    body: JSON.stringify(requestBody),
   });
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(`Sonar API Error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
-  }
+  console.log(`📊 Response status: ${response.status}`);
 
-  const data = await response.json();
-  return data.choices[0].message.content;
-};
-
-// Alternative models you can use
-const PERPLEXITY_PRO_MODELS = {
-  claude_sonnet: 'claude-3.5-sonnet-20241022',     // Most powerful
-  gpt4o: 'gpt-4o',                                 // OpenAI's best
-  claude_haiku: 'claude-3.5-haiku-20241022',       // Fastest
-  llama_70b: 'llama-3.1-70b-instruct',             // Open source
-  gpt4o_mini: 'gpt-4o-mini',                       // Cheaper option
-};
-
-// Function to try multiple Pro models as fallback
-const callSonarAPIWithFallback = async (prompt: string): Promise<{ text: string, model: string }> => {
-  const modelsToTry = [
-    { name: 'Claude 3.5 Sonnet', id: PERPLEXITY_PRO_MODELS.claude_sonnet },
-    { name: 'GPT-4o', id: PERPLEXITY_PRO_MODELS.gpt4o },
-    { name: 'Claude 3.5 Haiku', id: PERPLEXITY_PRO_MODELS.claude_haiku },
-    { name: 'Llama 3.1 70B', id: PERPLEXITY_PRO_MODELS.llama_70b },
-  ];
-
-  for (const model of modelsToTry) {
-    try {
-      console.log(`🤖 Trying ${model.name}...`);
-      
-      const response = await fetch('https://api.perplexity.ai/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.SONAR_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: model.id,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are Gubluxxy, a helpful AI assistant. Provide accurate, detailed, and well-structured responses. When analyzing documents, be thorough and cite specific information.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          max_tokens: 4000,
-          temperature: 0.7,
-          top_p: 0.9,
-          stream: false
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log(`✅ Success with ${model.name}`);
-        return {
-          text: data.choices[0].message.content,
-          model: model.name
-        };
-      }
-    } catch (error) {
-      console.log(`❌ ${model.name} failed:`, error);
-      continue; // Try next model
+  if (response.ok) {
+    const data = await response.json();
+    console.log(`✅ Success with Sonar Pro`);
+    
+    if (data.choices && data.choices[0] && data.choices[0].message) {
+      return {
+        text: data.choices[0].message.content,
+        model: 'Sonar Pro'
+      };
+    } else {
+      throw new Error('Invalid response format');
     }
+  } else {
+    const errorText = await response.text();
+    console.log(`❌ Sonar Pro failed with status ${response.status}: ${errorText}`);
+    throw new Error(`Sonar Pro: ${response.status} - ${errorText}`);
   }
-  
-  throw new Error('All Perplexity Pro models failed');
 };
 
 const isQuotaError = (error: any): boolean => {
@@ -119,9 +72,51 @@ const isQuotaError = (error: any): boolean => {
   );
 };
 
+// Test function to verify Perplexity API connectivity
+const testPerplexityAPI = async (): Promise<boolean> => {
+  try {
+    console.log('🧪 Testing Perplexity API connectivity...');
+    console.log('🔑 API Key present:', process.env.SONAR_API_KEY ? 'Yes' : 'No');
+    
+    const response = await fetch('https://api.perplexity.ai/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.SONAR_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'llama-3.1-sonar-small-128k-online',
+        messages: [{ role: 'user', content: 'Hi' }],
+        max_tokens: 50,
+      }),
+    });
+
+    console.log('🧪 Test response status:', response.status);
+    
+    if (response.ok) {
+      console.log('✅ Perplexity API test successful');
+      return true;
+    } else {
+      const errorText = await response.text();
+      console.log('❌ Perplexity API test failed:', errorText);
+      return false;
+    }
+  } catch (error: any) {
+    console.log('❌ Perplexity API test error:', error.message);
+    return false;
+  }
+};
+
 export async function POST(request: NextRequest) {
   try {
     const { message, conversationHistory, pdfContext } = await request.json();
+
+    if (!message) {
+      return NextResponse.json(
+        { error: 'Message is required' },
+        { status: 400 }
+      );
+    }
 
     // Build context for the conversation
     let conversationContext = '';
@@ -157,17 +152,17 @@ export async function POST(request: NextRequest) {
       console.log('❌ Gemini API failed:', geminiError.message);
       
       if (isQuotaError(geminiError)) {
-        console.log('🔄 Quota/overload detected, switching to Perplexity Pro...');
+        console.log('🔄 Quota/overload detected, switching to Sonar Pro...');
         
         try {
-          const sonarResult = await callSonarAPIWithFallback(fullPrompt);
+          const sonarResult = await callSonarAPI(fullPrompt);
           responseText = sonarResult.text;
           apiUsed = 'sonar';
           modelUsed = sonarResult.model;
-          console.log(`✅ Perplexity Pro success with ${modelUsed}`);
+          console.log(`✅ Sonar Pro success with ${modelUsed}`);
         } catch (sonarError: any) {
-          console.error('❌ Perplexity Pro failed:', sonarError.message);
-          throw new Error('Both Gemini and Perplexity Pro APIs are unavailable. Please try again later.');
+          console.error('❌ Sonar Pro failed:', sonarError.message);
+          throw new Error('Both Gemini and Sonar Pro APIs are unavailable. Please try again later.');
         }
       } else {
         throw geminiError;
