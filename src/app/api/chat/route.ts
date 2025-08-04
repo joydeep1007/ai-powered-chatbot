@@ -138,16 +138,16 @@ export async function POST(request: NextRequest) {
 
     let responseText = '';
     let apiUsed = 'gemini';
-    let modelUsed = 'Gemini 1.5 Flash';
+    let modelUsed = 'Gemini 2.0 Flash';
 
     try {
       // Try Gemini API first
-      console.log('🤖 Trying Gemini API...');
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      console.log('🤖 Trying Gemini 2.0 Flash API...');
+      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
       const result = await model.generateContent(fullPrompt);
       const response = await result.response;
       responseText = response.text();
-      console.log('✅ Gemini API success');
+      console.log('✅ Gemini 2.0 Flash API success');
     } catch (geminiError: any) {
       console.log('❌ Gemini API failed:', geminiError.message);
       
